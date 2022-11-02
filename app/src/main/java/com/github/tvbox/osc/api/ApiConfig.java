@@ -14,6 +14,7 @@ import com.github.tvbox.osc.bean.LiveChannelItem;
 import com.github.tvbox.osc.bean.ParseBean;
 import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.server.ControlManager;
+import com.github.tvbox.osc.util.AES;
 import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -83,6 +84,32 @@ public class ApiConfig {
         return instance;
     }
 
+    public static String FindResult(String json, String configKey) {
+        String content = json;
+        try {
+            if (AES.isJson(content)) return content;
+            if(content.contains("**")){
+                String[] data = json.split("\\*\\*");
+                content = new String(Base64.decode(data[1], Base64.DEFAULT));
+            }
+            if (content.startsWith("2423")) {
+                String data = content.substring(content.indexOf("2324") + 4, content.length() - 26);
+                content = new String(AES.toBytes(content)).toLowerCase();
+                String key = AES.rightPadding(content.substring(content.indexOf("$#") + 2, content.indexOf("#$")), "0", 16);
+                String iv = AES.rightPadding(content.substring(content.length() - 13), "0", 16);
+                json = AES.CBC(data, key, iv);
+            }else if (configKey !=null && !AES.isJson(content)) {
+                json = AES.ECB(content, configKey);
+            }
+            else{
+                json = content;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return json;
+    }
+
     public void loadConfig(boolean useCache, LoadConfigCallback callback, Activity activity) {
         String apiUrl = Hawk.get(HawkConfig.API_URL, "");
         if (apiUrl.isEmpty()) {
@@ -99,13 +126,26 @@ public class ApiConfig {
                 th.printStackTrace();
             }
         }
-        String apiFix = apiUrl;
-        if (apiUrl.startsWith("clan://")) {
-            apiFix = clanToAddress(apiUrl);
-        }else if(!apiUrl.startsWith("http")){
-            apiFix = "http://" + apiFix;
+        String TempKey = null, configUrl = "", pk = ";pk;";
+        if (apiUrl.contains(pk)) {
+            String[] a = apiUrl.split(pk);
+            TempKey = a[1];
+            if (apiUrl.startsWith("clan")){
+                configUrl = clanToAddress(a[0]);
+            }else if (apiUrl.startsWith("http")){
+                configUrl = a[0];
+            }else {
+                configUrl = "http://" + a[0];
+            }
+        } else if (apiUrl.startsWith("clan")) {
+            configUrl = clanToAddress(apiUrl);
+        } else if (!apiUrl.startsWith("http")) {
+            configUrl = "http://" + configUrl;
+        } else {
+            configUrl = apiUrl;
         }
-        OkGo.<String>get(apiFix)
+        String configKey = TempKey;
+        OkGo.<String>get(configUrl)
                 .headers("User-Agent", userAgent)
                 .headers("Accept", requestAccept)
                 .execute(new AbsCallback<String>() {
@@ -113,7 +153,8 @@ public class ApiConfig {
                     public void onSuccess(Response<String> response) {
                         try {
                             String json = response.body();
-                            parseJson(apiUrl, response.body());
+                            json = FindResult(json, configKey);
+                            parseJson(apiUrl, json);
                             try {
                                 File cacheDir = cache.getParentFile();
                                 if (!cacheDir.exists())
@@ -340,16 +381,32 @@ public class ApiConfig {
         }
         //video parse rule for host
         if (infoJson.has("rules")) {
+            VideoParseRuler.clearRule();
             for(JsonElement oneHostRule : infoJson.getAsJsonArray("rules")) {
                 JsonObject obj = (JsonObject) oneHostRule;
                 String host = obj.get("host").getAsString();
-                JsonArray ruleJsonArr = obj.getAsJsonArray("rule");
-                ArrayList<String> rule = new ArrayList<>();
-                for(JsonElement one : ruleJsonArr) {
-                    String oneRule = one.getAsString();
-                    rule.add(oneRule);
+                if (obj.has("rule")) {
+                    JsonArray ruleJsonArr = obj.getAsJsonArray("rule");
+                    ArrayList<String> rule = new ArrayList<>();
+                    for(JsonElement one : ruleJsonArr) {
+                        String oneRule = one.getAsString();
+                        rule.add(oneRule);
+                    }
+                    if (rule.size() > 0) {
+                        VideoParseRuler.addHostRule(host, rule);
+                    }
                 }
-                VideoParseRuler.addHostRule(host, rule);
+                if (obj.has("filter")) {
+                    JsonArray filterJsonArr = obj.getAsJsonArray("filter");
+                    ArrayList<String> filter = new ArrayList<>();
+                    for(JsonElement one : filterJsonArr) {
+                        String oneFilter = one.getAsString();
+                        filter.add(oneFilter);
+                    }
+                    if (filter.size() > 0) {
+                        VideoParseRuler.addHostFilter(host, filter);
+                    }
+                }
             }
         }
         // 广告地址

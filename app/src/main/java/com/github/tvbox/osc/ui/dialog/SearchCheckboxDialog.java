@@ -3,9 +3,11 @@ package com.github.tvbox.osc.ui.dialog;
 import android.app.Activity;
 import android.content.Context;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DiffUtil;
 
 import com.github.tvbox.osc.R;
@@ -13,6 +15,7 @@ import com.github.tvbox.osc.bean.SourceBean;
 import com.github.tvbox.osc.ui.adapter.CheckboxSearchAdapter;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.owen.tvrecyclerview.widget.TvRecyclerView;
+import com.owen.tvrecyclerview.widget.V7GridLayoutManager;
 import com.owen.tvrecyclerview.widget.V7LinearLayoutManager;
 
 import org.jetbrains.annotations.NotNull;
@@ -20,15 +23,17 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashMap;
 import java.util.List;
 
+import me.jessyan.autosize.utils.AutoSizeUtils;
+
 public class SearchCheckboxDialog extends BaseDialog{
 
     private TvRecyclerView mGridView;
     private CheckboxSearchAdapter checkboxSearchAdapter;
-    private TextView checkAll;
-    private TextView clearAll;
-    private List<SourceBean> mSourceList;
+    private final List<SourceBean> mSourceList;
+    TextView checkAll;
+    TextView clearAll;
 
-    public HashMap<String, String> mCheckSourcees = new HashMap<>();
+    public HashMap<String, String> mCheckSourcees;
 
     public SearchCheckboxDialog(@NonNull @NotNull Context context, List<SourceBean> sourceList, HashMap<String, String> checkedSources) {
         super(context);
@@ -43,6 +48,11 @@ public class SearchCheckboxDialog extends BaseDialog{
         initView(context);
     }
 
+    @Override
+    public void dismiss() {
+        checkboxSearchAdapter.setMCheckedSources();
+        super.dismiss();
+    }
 
     protected void initView(Context context) {
         mGridView = findViewById(R.id.mGridView);
@@ -60,7 +70,16 @@ public class SearchCheckboxDialog extends BaseDialog{
             }
         });
         mGridView.setHasFixedSize(true);
-        mGridView.setLayoutManager(new V7LinearLayoutManager(getContext(), 1, false));
+
+        int size = mSourceList.size();
+        int spanCount = (int) Math.floor(size / 10);
+        if (spanCount <= 0) spanCount = 1;
+        if (spanCount > 3) spanCount = 3;
+        mGridView.setLayoutManager(new V7GridLayoutManager(getContext(), spanCount));
+        View root = findViewById(R.id.root);
+        ViewGroup.LayoutParams clp = root.getLayoutParams();
+        clp.width = AutoSizeUtils.mm2px(getContext(), 400 + 260 * (spanCount - 1));
+
         mGridView.setAdapter(checkboxSearchAdapter);
         checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
         int pos = 0;
@@ -84,10 +103,10 @@ public class SearchCheckboxDialog extends BaseDialog{
             @Override
             public void onClick(View view) {
                 FastClickCheckUtil.check(view);
+                mCheckSourcees = new HashMap<>();
+                assert mSourceList != null;
                 for(SourceBean sourceBean : mSourceList) {
-                    if (!mCheckSourcees.containsKey(sourceBean.getKey())) {
-                        mCheckSourcees.put(sourceBean.getKey(), "1");
-                    }
+                    mCheckSourcees.put(sourceBean.getKey(), "1");
                 }
                 checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
             }
@@ -96,14 +115,7 @@ public class SearchCheckboxDialog extends BaseDialog{
             @Override
             public void onClick(View view) {
                 FastClickCheckUtil.check(view);
-                if (mCheckSourcees.size() <= 0) {
-                    return;
-                }
-                for(SourceBean sourceBean : mSourceList) {
-                    if (mCheckSourcees.containsKey(sourceBean.getKey())) {
-                        mCheckSourcees.remove(sourceBean.getKey());
-                    }
-                }
+                mCheckSourcees = new HashMap<>();
                 checkboxSearchAdapter.setData(mSourceList, mCheckSourcees);
             }
         });

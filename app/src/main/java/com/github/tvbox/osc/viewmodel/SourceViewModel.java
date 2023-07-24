@@ -197,7 +197,6 @@ public class SourceViewModel extends ViewModel {
                     @Override
                     public void onSuccess(Response<String> response) {
                         String sortJson  = response.body();
-                        LOG.i(sortJson);
                         if (sortJson != null) {
                             AbsSortXml sortXml = sortJson(sortResult, sortJson);
                             if (sortXml != null && Hawk.get(HawkConfig.HOME_REC, 0) == 1) {
@@ -673,6 +672,8 @@ public class SourceViewModel extends ViewModel {
                     result.put("parse", 1);
                     result.put("url", url);
                 }
+                result.put("proKey", progressKey);
+                result.put("subtKey", subtitleKey);
                 result.put("playUrl", playUrl);
                 result.put("flag", playFlag);
                 playResult.postValue(result);
@@ -703,6 +704,7 @@ public class SourceViewModel extends ViewModel {
                             JSONObject result = new JSONObject(json);
                             result.put("key", url);
                             result.put("proKey", progressKey);
+                            result.put("subtKey", subtitleKey);
                             if (!result.has("flag"))
                                 result.put("flag", playFlag);
                             playResult.postValue(result);
@@ -729,7 +731,10 @@ public class SourceViewModel extends ViewModel {
         JsonArray kv = obj.getAsJsonArray("value");
         LinkedHashMap<String, String> values = new LinkedHashMap<>();
         for (JsonElement ele : kv) {
-            values.put(ele.getAsJsonObject().get("n").getAsString(), ele.getAsJsonObject().get("v").getAsString());
+            JsonObject ele_obj = ele.getAsJsonObject();
+            String values_key=ele_obj.has("n")?ele_obj.get("n").getAsString():"";
+            String values_value=ele_obj.has("v")?ele_obj.get("v").getAsString():"";
+            values.put(values_key, values_value);
         }
         MovieSort.SortFilter filter = new MovieSort.SortFilter();
         filter.key = key;
@@ -862,6 +867,45 @@ public class SourceViewModel extends ViewModel {
 //                                    if (ss.length >= 2) {
 //                                        infoBeanList.add(new Movie.Video.UrlBean.UrlInfo.InfoBean(ss[0], ss[1]));
 //                                    }
+                                    if (ss.length > 0) {
+                                        if (ss.length >= 2) {
+                                            infoBeanList.add(new Movie.Video.UrlBean.UrlInfo.InfoBean(ss[0], ss[1]));
+                                        } else {
+                                            infoBeanList.add(new Movie.Video.UrlBean.UrlInfo.InfoBean((infoBeanList.size() + 1) + "", ss[0]));
+                                        }
+                                    }
+                                }
+                            }
+                            urlInfo.beanList = infoBeanList;
+                            detailResult.postValue(data);
+                        }
+
+                        @Override
+                        public void play(String url) {
+
+                        }
+                    });
+                }
+                if (urlInfo != null && urlInfo.beanList.size() == 1 && Thunder.isNetworkDownloadTask(urlInfo.beanList.get(0).url)) {
+                    Thunder.startTask(App.getInstance(), urlInfo.beanList.get(0).url, new Thunder.ThunderCallback() {
+                        @Override
+                        public void status(int code, String info) {
+                            if (code >= 0) {
+                                LOG.i(info);
+                            } else {
+                                urlInfo.beanList.get(0).name = info;
+                                detailResult.postValue(data);
+                            }
+                        }
+
+                        @Override
+                        public void list(String playList) {
+                            urlInfo.urls = playList;
+                            String[] str = playList.split("#");
+                            List<Movie.Video.UrlBean.UrlInfo.InfoBean> infoBeanList = new ArrayList<>();
+                            for (String s : str) {
+                                if (s.contains("$")) {
+                                    String[] ss = s.split("\\$");
                                     if (ss.length > 0) {
                                         if (ss.length >= 2) {
                                             infoBeanList.add(new Movie.Video.UrlBean.UrlInfo.InfoBean(ss[0], ss[1]));
